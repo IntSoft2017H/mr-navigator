@@ -5,103 +5,151 @@ using UnityEngine.Networking;
 
 public class NavigatorController : MonoBehaviour
 {
-    public GameObject cylinder;
-    private int pathUpdateInterval = 3; // in second
-    private string pathServerUrl = "http://localhost:10101";
-    private List<Vector2> path;
-    private List<GameObject> pathObjs;
-    private bool updatingPath = false;
-    private float lastPathUpdate = 0;
-    private float defaultCylinderHeight = 2;
-    private float defaultCylinderRadius = 1;
+    public PathManager pm;
+    public GameObject player;
+    public float speed = 0.05f;
+    public float sight = 0.3f; // この半径以内に入った点は訪れたとみなす
+    public float playerSight = 5; // この半径以内にプレイヤーがいる場合に限り先に進む (nav が player に期待する視力)
+
+    private int lastVisited = -1;
+
+    enum NavigatorState
+    {
+        Idle,
+        Walking,
+        Appealing,
+        Finish,
+    }
 
     // Use this for initialization
     void Start()
     {
-        path = new List<Vector2>();
-        pathObjs = new List<GameObject>();
-        updatingPath = true;
-        StartCoroutine(UpdatePath());
     }
 
     // Update is called once per frame
     void Update()
     {
-        if (Time.time - lastPathUpdate > pathUpdateInterval && !updatingPath)
+        // プレイヤーを待ちながらパスを追う
+        if (lastVisited < pm.Path.Count - 1)
         {
-            updatingPath = true;
-            StartCoroutine(UpdatePath());
-        }
-    }
-
-    // サーバに HTTP でアクセスしてパス情報を取得する
-    private IEnumerator UpdatePath()
-    {
-        using (UnityWebRequest uwr = UnityWebRequest.Get(pathServerUrl))
-        {
-            yield return uwr.SendWebRequest();
-            if (uwr.isHttpError || uwr.isNetworkError)
+            var navpos = new Vector2(transform.position.x, transform.position.z);
+            var player_pos = new Vector2(player.transform.position.x, player.transform.position.z);
+            float dist_nav_point = Vector2.Distance(navpos, pm.Path[lastVisited + 1]);
+            float dist_nav_player = Vector2.Distance(navpos, player_pos);
+            if (dist_nav_point < sight)
             {
-                Debug.Log(uwr.error);
+                lastVisited++;
+                if (lastVisited >= pm.Path.Count - 1)
+                {
+                    return;
+                }
+            }
+            var nav_forward = (pm.Path[lastVisited + 1] - navpos).normalized;
+            if (dist_nav_player < playerSight)
+            {
+                transform.position += new Vector3(nav_forward.x * speed, 0, nav_forward.y * speed);
+                transform.forward = new Vector3(nav_forward.x, transform.position.y, nav_forward.y);
+                transform.Rotate(0, 20, 0);
+                SetState(NavigatorState.Walking);
             }
             else
             {
-                var path_obj = new JSONObject(uwr.downloadHandler.text);
-                path = ConvertJsonPath(path_obj.GetField("path"));
+                SetState(NavigatorState.Idle);
             }
-            Debug.Log("Path updated.");
-            DumpPath();
-            updatingPath = false;
-            lastPathUpdate = Time.time;
-            ClearDrawnPath();
-            DrawPath(path, 0.2f);
+            Debug.Log(string.Format("target = {0}, dist_nav_point = {1}, dist_nav_player = {2}", lastVisited + 1, dist_nav_point, dist_nav_player));
+        }
+        else
+        {
+            SetState(NavigatorState.Finish);
         }
     }
 
-    private void ClearDrawnPath()
+    void SetState(NavigatorState state)
     {
-        foreach (var p in pathObjs)
+        var animator = GetComponent<Animator>();
+        switch (state)
         {
-            Destroy(p);
+            case NavigatorState.Idle:
+                animator.SetBool("walking", false);
+                break;
+            case NavigatorState.Walking:
+                animator.SetBool("walking", true);
+                break;
+            case NavigatorState.Appealing:
+                break;
+            case NavigatorState.Finish:
+                animator.SetBool("walking", false);
+                break;
+            default:
+                throw new System.InvalidOperationException("This must not be fired!");
         }
     }
 
-    private List<Vector2> ConvertJsonPath(JSONObject raw)
+    class IndexDist
     {
-        var path = new List<Vector2>();
-        foreach (var p in raw.list)
-        {
-            path.Add(new Vector2(p.GetField("x").n, p.GetField("y").n));
-        }
-        return path;
+        public int index;
+        public float dist;
     }
 
-    private void DumpPath()
+    private IndexDist FindNearestPoint(int from)
     {
-        string str = "[";
-        foreach (var p in path)
+        // パス中の from 以降の最近接 *点* を見つける
+        var pos = new Vector2(transform.position.x, transform.position.z);
+        float min_len = float.PositiveInfinity;
+        int next_point = -1;
+        for (int i = from; i < pm.Path.Count; i++)
         {
-            str = string.Format("{0}[{1}, {2}], ", str, p.x, p.y);
+            var d = Vector2.Distance(pos, pm.Path[i]);
+            if (d < min_len)
+            {
+                min_len = d;
+                next_point = i;
+            }
         }
-        Debug.Log(string.Format("{0}]", str));
+        return new IndexDist() { index = next_point, dist = min_len };
     }
 
-    private void DrawPath(List<Vector2> path, float r)
+    private IndexDist FindNextPoint(int from)
     {
-        for (int i = 1; i < path.Count; i++)
+        // パス中の最近接部分を見つける
+        var pos = new Vector2(transform.position.x, transform.position.z);
+        float min_len = float.PositiveInfinity;
+        int next_point = -1;
+        for (int i = from + 1; i < pm.Path.Count; i++)
         {
-            DrawLine(path[i - 1], path[i], r);
+            var p = pm.Path[i] - pm.Path[i - 1];
+            var x = pos - pm.Path[i - 1];
+            var xscale = Vector2.Dot(p.normalized, x);
+            // TODO FIXME 無駄がある (始点終点以外の点に対する判断が重複している)
+            if (xscale > p.magnitude)
+            {
+                var d = Vector2.Distance(pos, pm.Path[i]);
+                if (d < min_len)
+                {
+                    min_len = d;
+                    next_point = i;
+                }
+            }
+            else if (xscale < 0)
+            {
+                var d = Vector2.Distance(pos, pm.Path[i] + xscale * p);
+                if (d < min_len)
+                {
+                    min_len = d;
+                    next_point = i - 1;
+                }
+            }
+            else
+            {
+                var d = Vector2.Distance(pos, pm.Path[i - 1]);
+                if (d < min_len)
+                {
+                    min_len = d;
+                    next_point = i;
+                }
+            }
         }
-    }
-    
-    private void DrawLine(Vector2 from, Vector2 to, float r)
-    {
-        Vector3 position = new Vector3((to.x + from.x) / 2, 0, (to.y + from.y) / 2);
-        var v = to - from;
-        var xaxis = new Vector2(1, 0);
-        var rotation = Quaternion.Euler(0, -Vector2.SignedAngle(xaxis, v), 90);
-        var cyl = Instantiate(cylinder, position, rotation);
-        cyl.transform.localScale = new Vector3(r / defaultCylinderRadius, v.magnitude / defaultCylinderHeight, r / defaultCylinderRadius);
-        pathObjs.Add(cyl);
+        return new IndexDist() { index = next_point, dist = min_len };
+
     }
 }
