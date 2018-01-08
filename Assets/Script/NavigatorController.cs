@@ -10,20 +10,23 @@ public class NavigatorController : MonoBehaviour
     public float speed = 0.05f;
     public float sight = 0.3f; // この半径以内に入った点は訪れたとみなす
     public float playerSight = 5; // この半径以内にプレイヤーがいる場合に限り先に進む (nav が player に期待する視力)
+    public float randomness = 0.1f;
+    public int randomDirUpdateCycle = 30;
 
     private int lastVisited = -1;
+    private Vector2 randomDir;
 
     enum NavigatorState
     {
         Idle,
         Walking,
-        Appealing,
         Finish,
     }
 
     // Use this for initialization
     void Start()
     {
+        randomDir = new Vector2(Random.value, Random.value);
     }
 
     // Update is called once per frame
@@ -44,12 +47,14 @@ public class NavigatorController : MonoBehaviour
                     return;
                 }
             }
-            var nav_forward = (pm.Path[lastVisited + 1] - navpos).normalized;
+            var nav2next = pm.Path[lastVisited + 1] - navpos;
+            var nav_forward = nav2next.normalized;
+            nav_forward = nav_forward * (1 - randomness) + randomDir * randomness;
             if (dist_nav_player < playerSight)
             {
                 transform.position += new Vector3(nav_forward.x * speed, 0, nav_forward.y * speed);
-                transform.forward = new Vector3(nav_forward.x, transform.position.y, nav_forward.y);
-                transform.Rotate(0, 20, 0);
+                transform.forward = new Vector3(nav_forward.x, transform.forward.y, nav_forward.y).normalized;
+                transform.Rotate(0, 20, 0); // kitten モデルは向きが傾いているのでそれを補正する
                 SetState(NavigatorState.Walking);
             }
             else
@@ -61,6 +66,12 @@ public class NavigatorController : MonoBehaviour
         else
         {
             SetState(NavigatorState.Finish);
+        }
+
+        // update random dir
+        if (Time.frameCount % randomDirUpdateCycle == 0)
+        {
+            randomDir = new Vector2(Random.value, Random.value);
         }
     }
 
@@ -74,8 +85,6 @@ public class NavigatorController : MonoBehaviour
                 break;
             case NavigatorState.Walking:
                 animator.SetBool("walking", true);
-                break;
-            case NavigatorState.Appealing:
                 break;
             case NavigatorState.Finish:
                 animator.SetBool("walking", false);
