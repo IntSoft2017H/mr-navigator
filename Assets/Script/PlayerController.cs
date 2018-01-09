@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour {
     public float speed = 0.2f;
-    public GameObject eye;
+    public GameObject player;
 
 	// Use this for initialization
 	void Start () {
@@ -15,24 +15,25 @@ public class PlayerController : MonoBehaviour {
     void Update() {
         if (Input.GetKey("up"))
         {
-            transform.position += transform.forward * speed;
+            transform.position += player.transform.forward * speed;
         }
         if (Input.GetKey("left"))
         {
-            transform.position += -transform.right * speed;
+            transform.position += -player.transform.right * speed;
         }
         if (Input.GetKey("right"))
         {
-            transform.position += transform.right * speed;
+            transform.position += player.transform.right * speed;
         }
 		if (Input.GetKey("down"))
         {
-            transform.position += -transform.forward * speed;
+            transform.position += -player.transform.forward * speed;
         }
 
         if (Input.GetKey("w"))
         {
-            eye.transform.Rotate(-1, 0, 0);
+            transform.Rotate(-1, 0, 0);
+			player.transform.Rotate(1, 0, 0);
         }
         if (Input.GetKey("a"))
         {
@@ -44,7 +45,8 @@ public class PlayerController : MonoBehaviour {
         }
         if (Input.GetKey("s"))
         {
-            eye.transform.Rotate(1, 0, 0);
+            transform.Rotate(1, 0, 0);
+			player.transform.Rotate(-1, 0, 0);
         }
 	}
 }
