@@ -2,13 +2,16 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.UI;
 
 public class PathManager : MonoBehaviour {
     public GameObject cylinder;
     public List<Vector2> Path { get; private set; }
+	public PlayerController player;
+	public Text connectionText;
 
     private int pathUpdateInterval = 3; // in second
-    private string pathServerUrl = "http://localhost:10101";
+    private string pathServerUrl = "http://arcturu.com/mr-navigator-api/";
     private List<GameObject> pathObjs;
     private bool updatingPath = false;
     private float lastPathUpdate = 0;
@@ -41,11 +44,13 @@ public class PathManager : MonoBehaviour {
             if (uwr.isHttpError || uwr.isNetworkError)
             {
                 Debug.Log(uwr.error);
+				connectionText.text = uwr.error;
             }
             else
             {
                 var path_obj = new JSONObject(uwr.downloadHandler.text);
                 Path = ConvertJsonPath(path_obj.GetField("path"));
+				connectionText.text = "path update succeeded";
             }
             Debug.Log("Path updated.");
             DumpPath();
@@ -69,7 +74,10 @@ public class PathManager : MonoBehaviour {
         var path = new List<Vector2>();
         foreach (var p in raw.list)
         {
-            path.Add(new Vector2(p.GetField("x").n, p.GetField("y").n));
+			var p3 = new Vector3(p.GetField("x").n, 0, p.GetField("y").n);
+			Debug.Log (player.yRotationOffset);
+			p3 = Quaternion.Euler (player.yRotationOffset) * p3;
+			path.Add(new Vector2(p3.x, p3.z));
         }
         return path;
     }

@@ -7,6 +7,7 @@ public class NavigatorController : MonoBehaviour
 {
     public PathManager pm;
     public GameObject player;
+	public PlayerController playerController;
     public float speed = 0.05f;
     public float sight = 0.3f; // この半径以内に入った点は訪れたとみなす
     public float playerSight = 5; // この半径以内にプレイヤーがいる場合に限り先に進む (nav が player に期待する視力)
@@ -32,6 +33,10 @@ public class NavigatorController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+		if (!playerController.calibDone) {
+			SetState (NavigatorState.Idle);
+			return;
+		}
         // プレイヤーを待ちながらパスを追う
         if (lastVisited < pm.Path.Count - 1)
         {
